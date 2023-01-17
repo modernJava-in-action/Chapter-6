@@ -130,4 +130,37 @@ public class Dish {
 ```
 
 #### 요약 연산
-  
+  Collectors 클래스는 *Collectors.summingIng*라는 요약 팩토리 메서드를 제공한다. *summingIng*는 객체를 int로 매핑하는 함수를 인수로 받아서 객체를 int로 매핑한 컬렉터를 반환한다. 그리고 *summingInt*가 컬렉트 메서드로 전달되면 요약 작업을 수행한다. 아래는 메뉴 리스트의 총 칼로리를 계산하는 코드이다:
+```java
+  int totalCalories = menu.stream()
+                          .collect(summingInt(Dish::getCalories));
+```
+  *summingLong, summingDouble, averagingInt, averagingLong, averagingDouble* 등의 다양한 요약 연산 기능을 제공한다. 그리고 이렇게 다양한 요약 연산을 하나에 결합시켜놓은 *summarizingInt*라는 컬렉터도 제공한다. 아래 코드를 실행후:
+```java
+  IntSummaryStatistics menuStatistics = menu.stream()
+                                            .collect(summarizingInt(Dish::getCalories));
+```
+  *menuStatistics*를 출력해보면:
+```
+  IntSummaryStatistics{count=9, sum=4300, min=120, average=477.777778, max=800}
+```
+  *count, sum, min, average, max* 연산을 한번에 수행할 수 있다.
+
+#### 문자열 연결
+  컬렉터에 *joining* 패토리 메서드를 이용하면 모든 문자열을 하나의 문자열로 연결해서 반환한다. 다음은 메뉴의 모든 요리명을 연결하는 코드다:
+```java
+  String shortMenu = menu.stream()
+                         .map(Dish::getName)
+                         .collect(joining());
+```
+  만약 Dish 클래스가 요리명을 반환하는 toString 메서드를 구현하고 있다면 아래와 같이 map을 생략해도된다:
+```java
+  String shortMenu = menu.stream()
+                         .collect(joining());
+```
+  위 코드의 출력값은 모든 스트링이 연결되서 나오기 때문에 가독성이 떨어진다. 가독성 증가를 위해서 joining 메서드에 구분자를 추가해줄수 있다.
+```java
+  String shortMenu = menu.stream()
+                         .map(Dish::getName)
+                         .collect(joining(", "));
+```

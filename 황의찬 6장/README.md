@@ -181,8 +181,120 @@ private static int calculateTotalCaloriesUsingSum() {
 	}
 ```
 스트림을 IntStream으로 매핑한 다음에 sum 메서드를 호출하는 방법으로도 결과를 얻을 수 있습니다.  
+```java
+String shortMenu1 = menu.stream().map(Dish::getName).collect(joining());
+String shortMenu2 = menu.stream().collect(reducing((d1, d2) -> d1.getName() + d2.getName())).get();
+String shortMenu3 = menu.stream().collect(reducing("", Dish::getName, (s1, s2) -> s1 + s2));
+```
+실무에서는 joining을 사용하는 것이 가독성과 성능에 좋습니다.  
 
 ## 6.3 그룹화
+Java8의 함수형을 이용하면 가독성 있는 한 줄의 코드로 그룹화를 구현할 수 있습니다.  
+이번에는 메뉴를 그룹화한다고 가정해봅니다. 예를 들어 고기를 포함하는 그룹, 생선을 포함하는 그룹, 나머지 그룹으로 메뉴를 그룹화할 수 있습니다.  
+다음처럼 Collectors.groupingBy 를 이용해서 쉽게 메뉴를 그룹화할 수 있습니다.  
+  
+```java
+Map<Type, List<Dish>> dishesByType = 
+		menu.stream().collect(groupingBy(Dish::getType));
+```
+스트림의 각 요리에서 Dish.Type과 일치하는 모든 요리를 추출하는 함수를 groupingBy 메서드로 전달했습니다.  
+이 함수를 기준으로 스트림이 그룹화되므로 이를 분류 함수라고 부릅니다.  
+  
+그룹화 연산의 결과로 그룹화 함수가 반환하는 키 그리고 각 키에 대응하는 스트림의 모든 항목 리스트를 값으로 갖는 맵이 반환됩니다.  
+  
+단순한 속성 접근자 대신 더 복잡한 분류 기준이 필요한 상황에서는 메서드 참조를 분류 함수로 사용할 수 없습니다.  
+예를 들어 400칼로리 이하는 'diet', 400~700 칼로리를 'normal', 700칼로리 초과를 'fat'요리로 분류한다고 가정해봅니다.  
+따라서 람다 표현식으로 필요한 로직을 구현할 수 있습니다.  
+```java
+enum CaloricLevel {DIET, NORMAL, FAT};
+
+Map<CaloricLevel, List<Dish>> dishesByCaloricLevel = menu.stream().collect(
+			groupingBy(dish -> {
+				if (dish.getCalories() <= 400) return CaloricLevel.DIET;
+				else if (dish.getCalories() <= 700) return CaloricLevel.NORMAL;
+				else return CaloricLevel.FAT;
+			}));
+```
+그렇다면 요리 종류와 칼로리 두 가지 기준으로 `동시에` 그룹화할 수 있을까요?  
+  
+### 6.3.1 그룹화된 요소 조작 
+요소를 그룹화 한 다음에는 각 결과 그룹의 요소를 조작하는 연산이 필요합니다.  
+예를 들어 500칼로리가 넘는 요리만 필터한다고 가정해봅니다. 다음 코드처럼 그룹화를 하기 전에 프레디케이트로 필터를 적용해 문제를 해결할 수 있다고 생각할 것입니다.  
+```java
+Map<Type, List<Dish>> caloricDishesByType = menu.stream().filter(dish -> dish.getCalories() > 500)
+			.collect(groupingBy(Dish::getType));
+```
+단점으로는, 필터 프레디케이트를 만족하는 FISH 종류 요리는 없어 맵에서 해당 키 자체가 사라집니다.  
+```java
+Map<Type, List<Dish>> caloricDishesByTypeRight = menu.stream()
+			.collect(groupingBy(Dish::getType, filtering(dish -> dish.getCalories() > 500, toList())));
+```
+목록이 비어있는 FISH 항목도 제공됩니다.  
+매핑 함수를 이용해 요소를 변환할 수 있습니다.  
+```java
+Map<Type, List<String>> dishNamesByType = menu.stream()
+			.collect(groupingBy(Dish::getType, mapping(Dish::getName, toList())));
+System.out.println(dishNamesByType);
+```
+
+flatMapping 컬렉터를 이용하면 각 형식의 요리의 태그를 간편하게 출력할 수 있습니다.  
+```java
+Map<Type, Set<String>> dishNamesByTag = menu.stream()
+			.collect(groupingBy(Dish::getType,
+				flatMapping(dish -> dishTags.get(dish.getName()).stream(), toSet())));
+```
+Set으로 그룹화해서 중복 태그를 제거했습니다.
+
+### 6.3.2 다수준 그룹화
+스트림의 항목을 분류할 두 번째 기준을 정의하는 내부 groupingBy를 전달해서 두 수준으로 스트림의 항목을 그룹화할 수 있습니다.  
+```java
+Map<Type, Map<CaloricLevel, List<Dish>>> dishesByTypeCaloricLevel = menu.stream().collect(
+			groupingBy(Dish::getType, // 첫 번째 수준의 분류 함수
+				groupingBy(dish -> { // 두 번째 수준의 분류 함수
+					if (dish.getCalories() <= 400)
+						return CaloricLevel.DIET;
+					else if (dish.getCalories() <= 700)
+						return CaloricLevel.NORMAL;
+					else
+						return CaloricLevel.FAT;
+				}))
+		);
+```
+### 6.3.3 서브그룹으로 데이터 수집
+요리의 수를 종류별로 계산할 수 있습니다.  
+```java
+Map<Type, Long> typesCount = menu.stream().collect(groupingBy(Dish::getType, counting()));
+System.out.println(typesCount);
+```
+분류 함수 한 개의 인수를 갖는 groupingBy(f) 는 사실 groupingBy(f, toList())의 축약형입니다.  
+  
+요리의 종류를 분류하는 컬렉터로 메뉴에서 가장 높은 칼로리를 가진 요리를 찾는 프로그램도 다시 구현할 수 있습니다.  
+```java
+Map<Type, Optional<Dish>> mostCaloricByType = menu.stream()
+			.collect(groupingBy(Dish::getType, maxBy(comparingInt(Dish::getCalories))));
+```
+
+#### 컬렉터 결과를 다른 형식에 적용하기
+마지막 그룹화 연산에서 맵의 모든 값을 Optional 로 감쌀 필요가 없으므로 Optional을 삭제할 수 있습니다.  
+즉, 다음처럼 Collectors.collectingAndThen으로 컬렉터가 반환한 결과를 다른 형식으로 활용할 수 있습니다.  
+```java
+Map<Type, Dish> mstCaloricByType = menu.stream()
+			.collect(groupingBy(Dish::getType,
+				collectingAndThen(
+					maxBy(comparingInt(Dish::getCalories)), // 감싸인 컬렉터
+					Optional::get))); // 변환 함수
+```
+collectingAndThen은 적용할 컬렉터와 변환 함수를 인수로 받아 다른 컬렉터를 반환합니다.  
+반환되는 컬렉터는 기존 컬렉터의 래퍼 역할을 하며 collect의 마지막 과정에서 변환 함수로 자신이 반환하는 값을 매핑합니다.  
+  
+Collector 인터페이스 `Collector<T, A, R>` T(요소)를 A에 누적한 다음, 결과 R로 변환해 반환합니다.  
+
+
+
+
+
+
+
 
 
 

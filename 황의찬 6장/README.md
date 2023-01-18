@@ -120,7 +120,70 @@ private static String getShortMenuCommaSeparated() {
 
 다음 절에서는 Collectors.reducing 메서드가 제공하는 범용 리듀싱 컬렉터로도 지금까지 살펴본 모든 리듀싱을 재현할 수 있음을 알아봅니다.  
   
-### 6.2.4 
+### 6.2.4 범용 리듀싱 요약 연산
+지금까지 살펴본 모든 컬렉터는 reducing 팩터리 메서드로도 정의할 수 있습니다.  
+즉, `Collectors.reducing`으로도 구현할 수 있습니다. 그럼에도 이전 예제에서 특화된 컬렉터를 사용한 이유는 프로그래밍적 편의성 때문입니다.  
+예를 들어 reducing 메서드로 만들어진 컬렉터로도 메뉴의 모든 칼로리 합계를 계산할 수 있습니다.  
+```java
+private static int calculateTotalCalories() {
+		return menu.stream().collect(reducing(0, Dish::getCalories, (Integer i, Integer j) -> i + j));
+}
+```
+Collectors.reducing은 인수 세 개를 받습니다.  
+- 첫 번째 인수는 리듀싱 연산의 시작값이거나 스트림에 인수가 없을 때는 반환값입니다(숫자 합계에서는 인수가 없을 때 반환값으로 0이 적합합니다.)  
+- 두 번째 인수는 요리를 칼로리 정수로 변환할 때 사용할 변환 함수입니다.  
+- 세 번째 인수는 같은 종류의 두 항목을 하나의 합으로 더하는 BinaryOperator입니다.  
+  
+한 개의 인수를 갖는 reducing은 빈 스트림이 넘겨졌을 때 시작값이 설정되지 않는 상황이 벌어집니다.  
+따라서 `Optional<Dish>`를 반환합니다.  
+```java
+	private static Optional<Dish> calculateTotalCaloriesByOneArgument() {
+		return menu.stream()
+			.collect(reducing((d1, d2) -> d1.getCalories() > d2.getCalories() ? d1 : d2));
+	}
+```
+collect 메서드는 도출하는 결과를 누적하는 컨테이너를 바꾸도록 설계된 메서드인 반면 reduce는 두 값을 하나로  
+도출하는 불변형 연산이라는 점에서 의미론적인 문제가 일어납니다.  
+  
+여러 스레드가 동시에 같은 데이터 구조체를 고치면 리스트 자체가 망가져버리므로 리듀싱 연산을 병렬로 수행할 수 없다는 점도 문제입니다.  
+이 문제를 해결하려면 매번 새로운 리스트를 할당해야 하고 따라서 객체를 할당하느라 성능이 저하될 것입니다.  
+`가변 컨테이너 관련 작업이면서 병렬성을 확보하려면` collect 메서드로 리듀싱 연산을 구현하는 것이 바람직합니다.  
+  
+Integer의 sum을 참조하면 코드를 좀 더 단순화할 수 있습니다.  
+```java
+	private static int calculateTotalCaloriesWithMethodReference() {
+		return menu.stream().collect(reducing(0, Dish::getCalories, Integer::sum)); // 초깃값, 변환 함수, 합계 함수 
+	}
+```
+counting() 컬렉터도 세 개의 인수를 갖는 reducing 팩터리 메서드를 이용해서 구현할 수 있습니다.  
+```java
+public static <T> Collector<T, ?, Long> counting() {
+		return reducing(0L, e -> 1L, Long::sum);
+}
+```
+다음처럼 스트림의 Long 객체 형식 요소를 1로 변환한 다음에 모두 더할 수 있습니다.  
+사용은 다음처럼 할 수 있습니다.  
+```java
+private static long countMenusByCustomCollector() {
+		return menu.stream().collect(counting());
+}
+```
+5장에서는 다음과 같은 연산을 수행할 수 있음을 살펴봤습니다.  
+```java
+private static int calculateTotalCaloriesWithoutCollectors() {
+		return menu.stream().map(Dish::getCalories).reduce(Integer::sum).get();
+}
+```
+`Optional<Integer>`를 반환하는데, 일반적으로는 orElse, orElseGet을 이용하는 것이 좋습니다.  
+```java
+private static int calculateTotalCaloriesUsingSum() {
+		return menu.stream().mapToInt(Dish::getCalories).sum();
+	}
+```
+스트림을 IntStream으로 매핑한 다음에 sum 메서드를 호출하는 방법으로도 결과를 얻을 수 있습니다.  
+
+## 6.3 그룹화
+
 
 
 

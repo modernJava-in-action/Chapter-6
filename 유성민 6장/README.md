@@ -164,3 +164,119 @@ public class Dish {
                          .map(Dish::getName)
                          .collect(joining(", "));
 ```
+
+### 그룹화 (Grouping)
+  스트림을 활용해서 데이터 집합을 하나 이상의 특성으로 분류해서 그룹화하는 연산을 살펴보자. 이번에는 메뉴를 고기를 포함하는 그룹, 생선을 포함하는 그룹, 나머지 그룹으로 나눠보자. 이때는 *Collectors.groupingBy* 팩토리 메서드를 활용하면된다.
+```java
+  private static Map<Dish.Type, List<Dish>> groupDishesByType() {
+    return menu.stream().collect(groupingBy(Dish::getType));
+  }
+```
+  스트림의 각 요리에서 Dish.Type과 일치하는 요리를 추출하는 함수를 groupingBy 메서드로 전달했다. 이 함수를 기준으로 스트림이 그룹화되므로 이를 **분류 함수 (classification function)** 라고 부른다.
+  
+  단순한 속성 접근자 대신 더 복잡한 분류 기준이 필요한 상황에서는 람다 표현식으로 로직을 구현할 수 있다. 아래는 칼로리로 메뉴를 그룹화하는 코드이다:
+```java
+  enum CaloricLevel { DIET, NORMAL, FAT };
+
+  private static Map<CaloricLevel, List<Dish>> groupDishesByCaloricLevel() {
+    return menu.stream().collect(
+        groupingBy(dish -> {
+          if (dish.getCalories() <= 400) {
+            return CaloricLevel.DIET;
+          }
+          else if (dish.getCalories() <= 700) {
+            return CaloricLevel.NORMAL;
+          }
+          else {
+            return CaloricLevel.FAT;
+          }
+        })
+    );
+  }
+```
+
+#### 그룹화된 요소 조작
+  요소를 그룹화 한 다음에 각 결과 그룹의 요소를 조작하는 방법을 살펴보자. 예를 들어 500 칼로리 이상의 요리를 필터링 하면서 모든 키를 유지하는 방법을 알아보자. 이렇게 하려면 groupingBy 팩토리 메서드를 오버로드해 두 번째 인수에 *filtering* 메서드를 넘겨주면 된다. 이 *filtering* 메소드는 팩토리 메서드로 프레디케이트를 인수로 받는다.
+```java
+  private static Map<Dish.Type, List<Dish>> groupCaloricDishesByType() {
+    //return menu.stream().filter(dish -> dish.getCalories() > 500).collect(groupingBy(Dish::getType));
+    return menu.stream().collect(
+        groupingBy(Dish::getType,
+            filtering(dish -> dish.getCalories() > 500, toList())));
+  }
+```
+
+#### 다수준 그룹화
+  *Collectors.groupingBy*를 이용하면 항목을 다수준으로 그룹화할 수 있다. 그러므로 groupingBy를 중첩해서 사용하면 외부, 내부 맵을 가진 다수준 그룹화가 가능하다. 아래 코드로 살펴보자:
+```java
+  private static Map<Dish.Type, Map<CaloricLevel, List<Dish>>> groupDishedByTypeAndCaloricLevel() {
+    return menu.stream().collect(
+        groupingBy(Dish::getType,
+            groupingBy((Dish dish) -> {
+              if (dish.getCalories() <= 400) {
+                return CaloricLevel.DIET;
+              }
+              else if (dish.getCalories() <= 700) {
+                return CaloricLevel.NORMAL;
+              }
+              else {
+                return CaloricLevel.FAT;
+              }
+            })
+        )
+    );
+  }
+```
+
+### 분할
+  분할은 **분할 함수(partitioning function)**라 불리는 프레디케이트를 분류 함수로 사용한다. 분할 함수는 불리언을 반환하므로 맵의 키 형식은 Boolean이다. 결과적으로 분할의 결과 맵은 참 아니면 거짓 두개의 그룹으로 분류된다.
+
+  채식 요리와 채식이 아닌 요리로 나누는 코드로 살펴보자:
+```java
+  private static Map<Boolean, List<Dish>> partitionByVegeterian() {
+    return menu.stream().collect(partitioningBy(Dish::isVegetarian));
+  }
+```
+  위 코드의 리턴값은 아래와 같다:
+```
+  {false=[pork, beef, chicken, prawns, salmon], true=[french fries, rice, season fruit, pizza]}
+```
+  이렇게 참, 거짓 두 가지 요소의 스트림 리스트를 모두 유지한다는 것이 **분할의 장점**이다.
+
+### Collector 인터페이스
+  Collector 인터페이스에 있는 toList가 어떻게 구현되었는지 살펴보면서 내부적으로 컬렉트 메서드가 toList가 반환하는 함수를 어떻게 활용했는지 살펴보자. 다음 코드는 *Collector Interface*의 시그니처와 다섯개의 메서드 정의이다:
+```java
+  public interface Collector<T, A, R> {
+    Supplier<A> supplier();
+    BiConsumer<A, T> accumulator();
+    Function<A, R> finisher();
+    BinaryOperator<A> combiner();
+    Set<Characteristics> chracteristics();
+  }
+```
+  - T는 수집될 스트림 항목의 제네릭 형식이다.
+  - A는 누적자, 즉 수집 과정에서 중간 결과를 누적하는 객체의 형식이다.
+  - R은 수집 연산 결과 객체의 형식(대개 컬렉션)이다.
+  
+  Stream<T>의 모든 요소를 List<T>로 수집하는 ToListCollector<T>라는 클래스를 통해서 위 항목들을 자세히 알아보자.
+```java
+  public class ToListCollector<T> implements Collector<T, List<T>, List<T>>
+``
+#### supplier 메서드: 새로운 결과 컨테이너 만들기
+  supplier 메서드는 빈 결과로 이루어진 Supplier를 반환해야 한다. 즉, supplier는 수집 과정에서 빈 누적자 인스턴스를 만드는 파라미터가 없는 함수다.
+```java
+  public Supplier<List<T>> supplier() {
+    return () -> new ArrayList<T>();
+  }
+```
+
+#### accumulator 메서드 : 결과 컨테이너에 요소 추가
+  accumulator 메서드는 리듀싱 연산을 수행하는 함수를 반환한다. 요소를 탐색하면서 적용하는 함수에 의해 누적자 내부 상태가 바뀌므로 함수의 리턴값은 void이다. ToListCollector에서 accumulator가 반환하는 함수는 이미 탐색한 항목을 포함하는 리스트에 현재 항목을 추가하는 연산을 수행한다:
+```java
+  public BiConsumer<List<T>, T> accumulator {
+    return (list, item) -> list.add(item);
+  }
+```
+
+#### finisher 메서드 : 최종 변환값을 결과 컨테이너로 적용
+  

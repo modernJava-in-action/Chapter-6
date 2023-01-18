@@ -288,6 +288,106 @@ collectingAndThen은 적용할 컬렉터와 변환 함수를 인수로 받아 �
 반환되는 컬렉터는 기존 컬렉터의 래퍼 역할을 하며 collect의 마지막 과정에서 변환 함수로 자신이 반환하는 값을 매핑합니다.  
   
 Collector 인터페이스 `Collector<T, A, R>` T(요소)를 A에 누적한 다음, 결과 R로 변환해 반환합니다.  
+`public static <T> Collector<T, ?, Optional<T>> maxBy(Comparator<? super T> comparator)`  
+와 같은 형식을 가지므로, return type은 `Optional<T>` 입니다.  
+  
+실제로 메뉴의 요리 중 Optional.empty()를 값으로 갖는 요리는 존재하지 않습니다.  
+처음부터 존재하지 않는 요리의 키는 맵에 추가되지 않기 때문입니다. groupingBy 컬렉터는 스트림의 첫 번째 요소를 찾은 이후에야  
+그룹화 맵에 새로운 키를 게으르게 추가합니다. 리듀싱 컬렉터가 반환하는 형식을 사용하는 상황이므로 굳이 Optional 래퍼를 사용할 필요가 없습니다.  
+  
+#### GroupingBy와 함께 사용하는 다른 컬렉터 예제
+일반적으로 스트림에서 같은 그룹으로 분류된 모든 요소에 리듀싱 작업을 수행할 때는 팩토리 메서드 groupingBy에 두 번째 인수로 전달한 컬렉터를 사용합니다.  
+예를 들어 메뉴에 있는 모든 요리의 칼로리 합계를 구하려고 만든 컬렉터를 재사용할 수 있습니다.  
+```java
+Map<Type, Integer> totalCaloriesByType = menu.stream().collect(groupingBy(Dish::getType,
+			summingInt(Dish::getCalories)));
+```
+이 외에도 mapping 메서드로 만들어진 컬렉터도 groupingBy와 자주 사용됩니다.  
+mapping `메서드는 스트림의 인수를 변환하는 함수`와 `변환 함수의 결과 객체를 누적하는 컬렉터`를 인수로 받습니다.  
+mapping은 입력 요소를 누적하기 전에 매핑 함수를 적용해서 다양한 형식의 객체를 주어진 형식의 컬렉터에 맞게 변환하는 역할을 합니다.  
+```java
+Map<Type, Set<CaloricLevel>> caloricLevelsByType = menu.stream().collect(
+			groupingBy(Dish::getType, mapping(dish -> {
+				if (dish.getCalories() <= 400)
+					return CaloricLevel.DIET;
+				else if (dish.getCalories() <= 700)
+					return CaloricLevel.NORMAL;
+				else
+					return CaloricLevel.FAT;
+			}, toSet())));
+```
+mapping 메서드에 전달한 변환 함수는 Dish를 CaloricLevel로 매핑합니다.  
+CaloricLevel 결과 스트림은 toSet 컬렉터로 전달되면서 리스트가 아닌 집합으로 스트림의 요소가 누적됩니다.(따라서 중복을 피할 수 있습니다.)  
+  
+`toCollection`을 사용하면 원하는 방식으로 결과를 제어할 수 있습니다.
+```java
+Map<Type, HashSet<CaloricLevel>> caloricLevelsByType = menu.stream().collect(
+			groupingBy(Dish::getType, mapping(dish -> {
+				if (dish.getCalories() <= 400)
+					return CaloricLevel.DIET;
+				else if (dish.getCalories() <= 700)
+					return CaloricLevel.NORMAL;
+				else
+					return CaloricLevel.FAT;
+			}, toCollection(HashSet::new))));
+```
+
+## 6.4 분할
+분할은 분할 함수라 부리는 프레디케이트를 분류 함수로 사용하는 특수한 그룹화 기능입니다.  
+맵의 키 형식은 Boolean이고, 결과적으로 그룹화 맵은 최대 참 아니면 거짓의 값을 갖는 두 개의 그룹으로 분리됩니다.  
+다음은 모든 요리를 채식 요리와 채식이 아닌 요리로 분류한 것입니다.    
+```java
+private static Map<Boolean, List<Dish>> partitionByVegeterian() {
+		return menu.stream().collect(partitioningBy(Dish::isVegetarian));
+	}
+```
+이제 참값의 키로 맵에서 모든 채식 요리를 얻을 수 있습니다.  
+```java
+List<Dish> vegetarianDishes = partitionedMenu.get(true);
+```
+물론 메뉴 리스트로 생성한 스트림을 프레디케이트로 필터링한 다음에 별도의 리스트에 결과를 수집해도 같은 결과입니다.  
+  
+### 6.4.1 분할의 장점
+분할 함수가 반환하는 참, 거짓 두 가지 요소의 스트림 리스트를 모두 유지한다는 것이 분할의 장점입니다.  
+컬렉터를 두 번째 인수로 전달할 수 있는 오버로드 된 버전의 partitioningBy 메서드도 있습니다.  
+```java
+private static Map<Boolean, Map<Type, List<Dish>>> vegetarianDishesByType() {
+		return menu.stream().collect(partitioningBy(Dish::isVegetarian, groupingBy(Dish::getType)));
+}
+```
+채식 요리와 채식이 아닌 요리 각각의 그룹들에서 가장 칼로리가 높은 요리도 찾을 수 있습니다.  
+```java
+private static Object mostCaloricPartitionedByVegetarian() {
+		return menu.stream().collect(
+			partitioningBy(Dish::isVegetarian,
+				collectingAndThen(
+					maxBy(comparingInt(Dish::getCalories)),
+					Optional::get)));
+}
+```
+### 6.4.2 숫자를 소수와 비소수로 분할하기
+```java
+public class PartitionPrimeNumbers {
+	public static void main(String[] args) {
+		Map<Boolean, List<Integer>> partitionPrimeList = partitionPrimes(10);
+		System.out.println(partitionPrimeList);
+	}
+
+	public static boolean isPrime(int candidate) {
+		int candidateRoot = (int)Math.sqrt(candidate); // 에라토스테네스의 체 이용 
+		return IntStream.rangeClosed(2, candidateRoot)
+			.noneMatch(i -> candidate % i == 0);
+	}
+
+	public static Map<Boolean, List<Integer>> partitionPrimes(int n) {
+		return IntStream.rangeClosed(2, n).boxed()
+			.collect(Collectors.partitioningBy(candidate -> isPrime(candidate)));
+	}
+}
+```
+
+
+
 
 
 

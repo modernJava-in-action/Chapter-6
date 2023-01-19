@@ -512,6 +512,10 @@ List<Dish> dishes = menuStream.collect(new ToListCollector<Dish>());
 ```
 ### 컬렉터 구현을 만들지 않고도 커스텀 수집 진행하기
 Stream은 세 함수(발행, 누적, 합침) 를 인수로 받는 collect 메서드를 오버로드하며 각각의 메서드는 Collector 인터페이스의 메서드가 반환하는 함수와 같은 기능을 수행합니다.
+`stream.collect(ArrayList::new, List::add, List::addAll);`  
+그러나 Characteristics를 전달할 수 없습니다.  
+즉, 두 번째 collect 메서드는 IDENTITY_FINISH와 CONCURRENT 지만 UNORDERED는 아닌 컬렉터로만 동작합니다.  
+
 
 
 

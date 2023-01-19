@@ -516,6 +516,11 @@ Stream은 세 함수(발행, 누적, 합침) 를 인수로 받는 collect 메서
 그러나 Characteristics를 전달할 수 없습니다.  
 즉, 두 번째 collect 메서드는 IDENTITY_FINISH와 CONCURRENT 지만 UNORDERED는 아닌 컬렉터로만 동작합니다.  
 
+## 6.6 커스텀 컬렉터 구현하기
+[커스텀 컬렉터 구현](https://chan9.tistory.com/166)  
+
+## 6.7 마치며
+- collect는 스트림의 요소를 요약 결과로 누적하는 다양한 방법(컬렉터라 불리는)을 인수로 갖는 최종 연산입니다.  
 
 
 
